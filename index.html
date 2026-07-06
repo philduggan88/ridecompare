@@ -190,8 +190,10 @@
 
   <p class="note">
     <b>📍 Current location</b> opens a map centred on you — drag to fine-tune, then set your pickup point.
-    Fares are <b>estimates</b> from each operator's published fare structure (base + distance + time + platform fee),
-    before surge, tolls/ERP and promos — treat them as a ranking guide, not a quote.
+    Zig's figure computes ComfortDelGro's <b>published meter rates exactly</b> (incl. peak/late-night
+    percentages and location fees) — only the in-traffic waiting time is estimated. Other fares are
+    <b>estimates</b> from published fare structures plus peak, late-night and airport rules; surge and
+    promos still move real quotes — treat the ranking as the guide, not the number.
     Tapping <b>Open</b> jumps into the app: Grab gets your trip pre-filled; for the others your destination is
     copied to the clipboard so you can paste it straight into the search box.
     Long-press a result row to copy just that app's info.
@@ -237,9 +239,66 @@ const SERVICES = [
   //  zig.live/campaigns/* is in Zig's apple-app-site-association).
   { id: "ryde",  name: "Ryde",  tier: "RydeX",      base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80,
     universal: "https://ryde.app.link/download-ryde", prefill: false },
-  { id: "zig",   name: "Zig",   tier: "ComfortRide", base: 3.90, perKm: 0.75, perMin: 0.16, fee: 0.80,
+  { id: "zig",   name: "Zig",   tier: "Metered taxi", metered: true,
     universal: "https://zig.live/campaigns/app", prefill: false },
 ];
+
+/* ---------- Surcharge & surge rules (reviewed Jul 2026) ----------
+   Taxi (Zig/CDG) rules are published and exact; PHV surge buckets are
+   modelled from reported patterns and get sharper once CALIBRATION is
+   filled from real ride receipts. */
+const CHANGI = { lat: 1.3644, lon: 103.9915 };
+// Rough CBD box: Raffles Place / Tanjong Pagar / Marina downtown core
+const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
+
+// Per-service correction factors fitted from Philip's own e-receipts.
+// factor: multiplier on the modelled mid fare; spread: half-width of the
+// band once calibrated; n: number of receipts behind it. null = not yet fitted.
+const CALIBRATION = {
+  grab: null, gojek: null, tada: null, ryde: null, zig: null,
+};
+
+function distKm(a, b) {
+  const R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLon = (b.lon - a.lon) * Math.PI / 180;
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * Math.PI / 180) * Math.cos(b.lat * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+
+function fareContext(p, d, now = new Date()) {
+  const dow = now.getDay(), t = now.getHours() + now.getMinutes() / 60;
+  const weekday = dow >= 1 && dow <= 5;
+  const amPeakTaxi = (weekday && t >= 6 && t < 9.5) || (!weekday && t >= 10 && t < 14);
+  const pmPeak = t >= 18;                 // 6pm–11:59pm daily, 25% on the meter
+  const lateNight = t < 6;                // midnight–5:59am, 50% on the meter
+  const phvPeak = (weekday && t >= 7 && t < 9.5) || (t >= 17 && t < 20);
+  const airportPickup = p && distKm(p, CHANGI) < 2.5;
+  const airportEvening = t >= 17 && (dow === 5 || dow === 6 || dow === 0);
+  const taxiAirportEvening = t >= 17;     // CDG airport fee is $8 from 5pm, $6 otherwise
+  const cbdEvening = p && t >= 17 &&
+    p.lat > CBD.latMin && p.lat < CBD.latMax && p.lon > CBD.lonMin && p.lon < CBD.lonMax;
+  return { amPeakTaxi, pmPeak, lateNight, phvPeak, airportPickup, airportEvening, taxiAirportEvening, cbdEvening };
+}
+
+/* Exact CDG metered fare (standard hybrid cab), per cdgtaxi.com.sg:
+   $4.60 first 1km, then per 400m up to 10km and per 350m after, currently
+   $0.28/unit ($0.27 + temporary $0.01 until 31 Jul 2026 — drop back after).
+   Same unit rate per 45s waiting. +25% peak / +50% late night on the meter,
+   then location surcharges, Zig app booking ($3.30) + platform (~$1.15) fees. */
+function meteredTaxiFare(route, ctx) {
+  const UNIT = 0.28;
+  let meter = 4.60;
+  const m = route.km * 1000;
+  if (m > 1000) meter += Math.ceil((Math.min(m, 10000) - 1000) / 400) * UNIT;
+  if (m > 10000) meter += Math.ceil((m - 10000) / 350) * UNIT;
+  const waitFrac = ctx.pmPeak || ctx.amPeakTaxi ? 0.25 : 0.15;  // est. share of trip spent stopped
+  meter += Math.ceil((route.min * waitFrac * 60) / 45) * UNIT;
+  if (ctx.lateNight) meter *= 1.5;
+  else if (ctx.amPeakTaxi || ctx.pmPeak) meter *= 1.25;
+  let total = meter + 3.30 + 1.15;        // booking fee + Zig platform fee
+  if (ctx.airportPickup) total += (ctx.taxiAirportEvening ? 8 : 6);
+  if (ctx.cbdEvening) total += 3;
+  return total;
+}
 
 const state = { pickup: null, dropoff: null };
 const $ = (id) => document.getElementById(id);
@@ -372,13 +431,6 @@ async function getRoute(p, d) {
   return { km: r.distance / 1000, min: (r.duration / 60) * 1.35 };
 }
 
-function isPeak() {
-  const now = new Date();
-  const day = now.getDay(), h = now.getHours() + now.getMinutes() / 60;
-  const weekday = day >= 1 && day <= 5;
-  return (weekday && h >= 7 && h <= 9.5) || (h >= 17 && h <= 20);
-}
-
 /* ---------- Compare ---------- */
 async function compare() {
   const btn = $("goBtn");
@@ -386,11 +438,17 @@ async function compare() {
   btn.innerHTML = '<span class="spinner"></span>Getting route…';
   try {
     const route = await getRoute(state.pickup, state.dropoff);
+    const ctx = fareContext(state.pickup, state.dropoff);
+    const tags = [];
+    if (ctx.lateNight) tags.push("late-night rates");
+    else if (ctx.pmPeak || ctx.amPeakTaxi || ctx.phvPeak) tags.push("peak rates");
+    if (ctx.airportPickup) tags.push("airport pickup fee");
+    if (ctx.cbdEvening) tags.push("CBD surcharge");
     const info = $("routeInfo");
     info.style.display = "block";
     info.innerHTML = `<b>${route.km.toFixed(1)} km</b> · about <b>${Math.round(route.min)} min</b> drive` +
-      (isPeak() ? ' · <span id="peakNote">peak hours — expect the upper end</span>' : "");
-    renderResults(route);
+      (tags.length ? ` · <span id="peakNote">${tags.join(" · ")} applied</span>` : "");
+    renderResults(route, ctx);
   } catch (e) {
     toast("Couldn't get route — try again");
   } finally {
@@ -400,17 +458,35 @@ async function compare() {
   }
 }
 
-function estimate(svc, route) {
-  const mid = svc.base + svc.perKm * route.km + svc.perMin * route.min + svc.fee;
-  return { lo: Math.round(mid * 0.85 * 10) / 10, hi: Math.round(mid * 1.25 * 10) / 10, mid };
+function estimate(svc, route, ctx) {
+  if (svc.metered) {
+    // Published meter rates are exact; the ±5% covers the waiting-time guess.
+    return band(meteredTaxiFare(route, ctx), 0.05);
+  }
+  let mid = svc.base + svc.perKm * route.km + svc.perMin * route.min + svc.fee;
+  if (ctx.airportPickup) mid += ctx.airportEvening ? 5 : 3;
+  let spread = 0.10;
+  if (ctx.lateNight) { mid *= 1.20; spread = 0.15; }
+  else if (ctx.phvPeak) { mid *= 1.18; spread = 0.15; }
+  const cal = CALIBRATION[svc.id];
+  if (cal) { mid *= cal.factor; spread = cal.spread; }
+  return band(mid, spread);
 }
 
-function renderResults(route) {
+function band(mid, spread) {
+  return {
+    lo: Math.round(mid * (1 - spread) * 10) / 10,
+    hi: Math.round(mid * (1 + spread) * 10) / 10,
+    mid,
+  };
+}
+
+function renderResults(route, ctx) {
   const wrap = $("results");
   wrap.innerHTML = "";
   wrap.style.display = "flex";
 
-  const rows = SERVICES.map(svc => ({ svc, est: estimate(svc, route) }))
+  const rows = SERVICES.map(svc => ({ svc, est: estimate(svc, route, ctx) }))
     .sort((a, b) => a.est.mid - b.est.mid);
 
   rows.forEach((row, idx) => {
@@ -425,7 +501,7 @@ function renderResults(route) {
       </div>
       <div class="price">
         <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
-        <div class="lbl">estimate</div>
+        <div class="lbl">${svc.metered ? "meter est." : (CALIBRATION[svc.id] ? "calibrated" : "estimate")}</div>
       </div>
       ${svc.universal
         ? `<a class="open-btn" href="${svc.universal}">Open</a>`
