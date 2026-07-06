@@ -1,5 +1,9 @@
-const CACHE = "ridecompare-v2";
-const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
+const CACHE = "ridecompare-v3";
+const ASSETS = [
+  "./", "./index.html", "./manifest.json", "./icon.svg",
+  "./icons/grab.png", "./icons/gojek.png", "./icons/tada.png",
+  "./icons/ryde.png", "./icons/zig.png",
+];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)));

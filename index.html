@@ -12,6 +12,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="RideCompare">
 <meta name="theme-color" content="#0d1117">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
     --bg: #0d1117;
@@ -91,7 +93,8 @@
     border-radius: var(--radius); padding: 13px 14px;
   }
   .ride.best { border-color: var(--green); }
-  .ride .badge { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: #fff; flex-shrink: 0; }
+  .ride .badge { width: 42px; height: 42px; border-radius: 11px; overflow: hidden; flex-shrink: 0; }
+  .ride .badge img { width: 100%; height: 100%; display: block; }
   .ride .info { flex: 1; min-width: 0; }
   .ride .name { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
   .ride .tier { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -116,6 +119,35 @@
   .toast.show { opacity: 1; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- Map pickup modal ---- */
+  .map-modal {
+    position: fixed; inset: 0; z-index: 200; background: var(--bg);
+    display: none; flex-direction: column;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .map-modal.open { display: flex; }
+  .map-modal .map-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; }
+  .map-modal .map-head h2 { font-size: 16px; }
+  .map-modal .map-head button { background: none; border: none; color: var(--muted); font-size: 20px; padding: 4px 8px; cursor: pointer; }
+  .map-wrap { position: relative; flex: 1; }
+  #map { position: absolute; inset: 0; background: #1c2330; }
+  .center-pin {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -100%);
+    font-size: 34px; z-index: 1000; pointer-events: none;
+    filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5));
+  }
+  .map-foot { display: flex; gap: 10px; padding: 12px 16px; }
+  .map-foot .locate {
+    background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 12px; font-size: 18px; padding: 12px 16px; cursor: pointer; flex-shrink: 0;
+  }
+  .map-foot .confirm {
+    flex: 1; background: linear-gradient(135deg, #4ea1ff, #7c5cff); border: none; border-radius: 12px;
+    color: #fff; font-size: 15px; font-weight: 700; padding: 13px; cursor: pointer;
+  }
+  .leaflet-control-attribution { background: rgba(13,17,23,0.7) !important; color: var(--muted) !important; }
+  .leaflet-control-attribution a { color: var(--accent) !important; }
 </style>
 </head>
 <body>
@@ -145,6 +177,7 @@
     </div>
 
     <div class="row-actions">
+      <button class="chip" id="mapBtn">📍 Current location</button>
       <div class="chips-scroll" id="favChips"></div>
       <button class="chip swap" id="swapBtn" title="Swap">⇅</button>
     </div>
@@ -156,12 +189,28 @@
   <div class="results" id="results"></div>
 
   <p class="note">
+    <b>📍 Current location</b> opens a map centred on you — drag to fine-tune, then set your pickup point.
     Fares are <b>estimates</b> from each operator's published fare structure (base + distance + time + platform fee),
     before surge, tolls/ERP and promos — treat them as a ranking guide, not a quote.
     Tapping <b>Open</b> jumps into the app: Grab gets your trip pre-filled; for the others your destination is
     copied to the clipboard so you can paste it straight into the search box.
     Long-press a result row to copy just that app's info.
   </p>
+</div>
+
+<div class="map-modal" id="mapModal">
+  <div class="map-head">
+    <h2>Set pickup point</h2>
+    <button id="mapClose">✕</button>
+  </div>
+  <div class="map-wrap">
+    <div id="map"></div>
+    <div class="center-pin">📍</div>
+  </div>
+  <div class="map-foot">
+    <button class="locate" id="mapLocate" title="Center on my location">⌖</button>
+    <button class="confirm" id="mapConfirm">Set pickup here</button>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -173,20 +222,22 @@
    Approximate published structures, last reviewed Jul 2026.
    fare = base + perKm*km + perMin*min + fee, shown as a −15%/+25% range.
    Edit here if operators revise pricing. */
+/* Badge icons in icons/*.png are the official App Store artwork
+   (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
 const SERVICES = [
-  { id: "grab",  name: "Grab",  tier: "JustGrab",   color: "#00B14F", base: 3.20, perKm: 0.75, perMin: 0.25, fee: 0.90,
+  { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 3.20, perKm: 0.75, perMin: 0.25, fee: 0.90,
     deeplink: (p, d) => `grab://open?screenType=BOOKING&pickUpLatitude=${p.lat}&pickUpLongitude=${p.lon}&pickUpAddress=${encodeURIComponent(p.name)}&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
     fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
-  { id: "gojek", name: "Gojek", tier: "GoCar",      color: "#00AA13", base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
+  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
-  { id: "tada",  name: "TADA",  tier: "Economy",    color: "#0064FF", base: 2.80, perKm: 0.68, perMin: 0.22, fee: 0.70,
+  { id: "tada",  name: "TADA",  tier: "Economy",    base: 2.80, perKm: 0.68, perMin: 0.22, fee: 0.70,
     deeplink: () => "tada://", fallback: "https://apps.apple.com/sg/app/id1412329684", prefill: false },
   // Ryde & Zig have no public custom scheme; both are opened via universal links
   // (ryde.app.link is Branch — opens app if installed, App Store otherwise;
   //  zig.live/campaigns/* is in Zig's apple-app-site-association).
-  { id: "ryde",  name: "Ryde",  tier: "RydeX",      color: "#8A2BE2", base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80,
+  { id: "ryde",  name: "Ryde",  tier: "RydeX",      base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80,
     universal: "https://ryde.app.link/download-ryde", prefill: false },
-  { id: "zig",   name: "Zig",   tier: "ComfortRide", color: "#FFB300", base: 3.90, perKm: 0.75, perMin: 0.16, fee: 0.80,
+  { id: "zig",   name: "Zig",   tier: "ComfortRide", base: 3.90, perKm: 0.75, perMin: 0.16, fee: 0.80,
     universal: "https://zig.live/campaigns/app", prefill: false },
 ];
 
@@ -367,7 +418,7 @@ function renderResults(route) {
     const div = document.createElement("div");
     div.className = "ride" + (idx === 0 ? " best" : "");
     div.innerHTML = `
-      <div class="badge" style="background:${svc.color}">${svc.name[0]}</div>
+      <div class="badge"><img src="icons/${svc.id}.png" alt="${svc.name}"></div>
       <div class="info">
         <div class="name">${svc.name}${idx === 0 ? ' <span class="cheapest-tag">Best est.</span>' : ""}</div>
         <div class="tier">${svc.tier}</div>
@@ -414,6 +465,68 @@ function openService(svc) {
   }, { once: true });
   window.location.href = url;
 }
+
+/* ---------- Map pickup picker ---------- */
+const SG_CENTER = [1.3521, 103.8198];
+let map = null;
+
+function openMap() {
+  $("mapModal").classList.add("open");
+  if (!map) {
+    map = L.map("map", { zoomControl: false }).setView(SG_CENTER, 12);
+    L.tileLayer("https://www.onemap.gov.sg/maps/tiles/Default/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '<a href="https://www.onemap.gov.sg/" target="_blank">OneMap</a> © SLA',
+    }).addTo(map);
+  }
+  // Leaflet was initialised while the container was hidden — recalc now.
+  setTimeout(() => map.invalidateSize(), 50);
+  locateMe(true);
+}
+
+function locateMe(silent) {
+  if (!navigator.geolocation) {
+    if (!silent) toast("Location not available on this device");
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 17),
+    () => { if (!silent) toast("Couldn't get your location — check permissions"); },
+    { enableHighAccuracy: true, timeout: 8000 }
+  );
+}
+
+async function reverseGeocode(lat, lon) {
+  try {
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18`);
+    const data = await res.json();
+    if (data.display_name) {
+      const parts = data.display_name.split(",").map(s => s.trim());
+      // display_name is often "Name, HouseNo, Road, …" — fold the number into the road
+      const name = /^\d+[A-Za-z]?$/.test(parts[1] || "")
+        ? `${parts[0]}, ${parts[1]} ${parts[2] || ""}`.trim()
+        : parts.slice(0, 2).join(", ");
+      return { name, address: parts.slice(0, 4).join(", ") };
+    }
+  } catch { /* fall through to coordinate label */ }
+  return { name: `Pinned location (${lat.toFixed(4)}, ${lon.toFixed(4)})`, address: "Dropped pin" };
+}
+
+async function confirmMapPoint() {
+  const btn = $("mapConfirm");
+  const c = map.getCenter();
+  btn.innerHTML = '<span class="spinner"></span>Looking up address…';
+  const place = await reverseGeocode(c.lat, c.lng);
+  btn.textContent = "Set pickup here";
+  selectPlace("pickup", { name: place.name, address: place.address, lat: c.lat, lon: c.lng });
+  $("mapModal").classList.remove("open");
+  toast("Pickup set from map");
+}
+
+$("mapBtn").addEventListener("click", openMap);
+$("mapClose").addEventListener("click", () => $("mapModal").classList.remove("open"));
+$("mapLocate").addEventListener("click", () => locateMe(false));
+$("mapConfirm").addEventListener("click", confirmMapPoint);
 
 /* ---------- Init ---------- */
 wireField("pickup");
