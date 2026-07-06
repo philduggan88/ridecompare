@@ -102,6 +102,7 @@
   .ride .open-btn {
     background: var(--card2); border: 1px solid var(--border); color: var(--accent);
     border-radius: 10px; font-size: 13px; font-weight: 650; padding: 9px 12px; cursor: pointer; flex-shrink: 0;
+    text-decoration: none; display: inline-block;
   }
   .ride .open-btn:active { background: rgba(78,161,255,0.15); }
 
@@ -179,11 +180,14 @@ const SERVICES = [
   { id: "gojek", name: "Gojek", tier: "GoCar",      color: "#00AA13", base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
   { id: "tada",  name: "TADA",  tier: "Economy",    color: "#0064FF", base: 2.80, perKm: 0.68, perMin: 0.22, fee: 0.70,
-    deeplink: () => "tada://", fallback: "https://tada.global", prefill: false },
+    deeplink: () => "tada://", fallback: "https://apps.apple.com/sg/app/id1412329684", prefill: false },
+  // Ryde & Zig have no public custom scheme; both are opened via universal links
+  // (ryde.app.link is Branch — opens app if installed, App Store otherwise;
+  //  zig.live/campaigns/* is in Zig's apple-app-site-association).
   { id: "ryde",  name: "Ryde",  tier: "RydeX",      color: "#8A2BE2", base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80,
-    deeplink: () => "rydesg://", fallback: "https://www.rydesharing.com", prefill: false },
+    universal: "https://ryde.app.link/download-ryde", prefill: false },
   { id: "zig",   name: "Zig",   tier: "ComfortRide", color: "#FFB300", base: 3.90, perKm: 0.75, perMin: 0.16, fee: 0.80,
-    deeplink: () => "cdgzig://", fallback: "https://zig.live", prefill: false },
+    universal: "https://zig.live/campaigns/app", prefill: false },
 ];
 
 const state = { pickup: null, dropoff: null };
@@ -372,22 +376,34 @@ function renderResults(route) {
         <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
         <div class="lbl">estimate</div>
       </div>
-      <button class="open-btn">Open</button>
+      ${svc.universal
+        ? `<a class="open-btn" href="${svc.universal}">Open</a>`
+        : `<button class="open-btn">Open</button>`}
     `;
-    div.querySelector(".open-btn").addEventListener("click", () => openService(svc));
+    // Universal links stay a real anchor tap (most reliable on iOS);
+    // the click handler only adds the clipboard copy, no preventDefault.
+    div.querySelector(".open-btn").addEventListener("click", (e) => {
+      if (svc.universal) copyDestination(svc);
+      else openService(svc);
+    });
     wrap.appendChild(div);
   });
 }
 
 /* ---------- Deep-link openers ---------- */
-async function openService(svc) {
+function copyDestination(svc) {
+  const d = state.dropoff;
+  if (!d) return;
+  // Fire-and-forget: never await before navigating, or iOS may drop the
+  // user-activation window the navigation needs.
+  navigator.clipboard.writeText(`${d.name}, ${d.address}`)
+    .then(() => toast(`Destination copied — paste it in ${svc.name}`))
+    .catch(() => {});
+}
+
+function openService(svc) {
   const p = state.pickup, d = state.dropoff;
-  if (!svc.prefill && d) {
-    try {
-      await navigator.clipboard.writeText(`${d.name}, ${d.address}`);
-      toast(`Destination copied — paste it in ${svc.name}`);
-    } catch { /* clipboard needs secure context; not fatal */ }
-  }
+  if (!svc.prefill) copyDestination(svc);
   const url = svc.deeplink(p, d);
   const fallbackTimer = setTimeout(() => {
     if (!document.hidden) window.location.href = svc.fallback;
