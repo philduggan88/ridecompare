@@ -1,4 +1,4 @@
-const CACHE = "ridecompare-v4";
+const CACHE = "ridecompare-v5";
 const ASSETS = [
   "./", "./index.html", "./manifest.json", "./icon.svg",
   "./icons/grab.png", "./icons/gojek.png", "./icons/tada.png",

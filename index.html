@@ -192,7 +192,8 @@
     <b>📍 Current location</b> opens a map centred on you — drag to fine-tune, then set your pickup point.
     Zig's figure computes ComfortDelGro's <b>published meter rates exactly</b> (incl. peak/late-night
     percentages and location fees) — only the in-traffic waiting time is estimated. Other fares are
-    <b>estimates</b> from published fare structures plus peak, late-night and airport rules; surge and
+    <b>estimates</b> from published fare structures plus peak, late-night and airport rules,
+    <b>calibrated against your own past ride receipts</b> (the "fit to N rides" tag); surge and
     promos still move real quotes — treat the ranking as the guide, not the number.
     Tapping <b>Open</b> jumps into the app: Grab gets your trip pre-filled; for the others your destination is
     copied to the clipboard so you can paste it straight into the search box.
@@ -251,11 +252,18 @@ const CHANGI = { lat: 1.3644, lon: 103.9915 };
 // Rough CBD box: Raffles Place / Tanjong Pagar / Marina downtown core
 const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
 
-// Per-service correction factors fitted from Philip's own e-receipts.
-// factor: multiplier on the modelled mid fare; spread: half-width of the
-// band once calibrated; n: number of receipts behind it. null = not yet fitted.
+// Per-service correction factors fitted from Philip's own e-receipts
+// (49 SGD rides, Dec 2025–Jul 2026): factor = median(actual / modelled)
+// with routes rebuilt via OneMap+OSRM exactly as the app computes them;
+// spread = 1.5×MAD capped at 0.18. Re-fit with scratchpad fit_calibration.py
+// on fresh receipts when estimates start drifting. zig stays null — its
+// meter computation is exact and the receipts corroborate it.
 const CALIBRATION = {
-  grab: null, gojek: null, tada: null, ryde: null, zig: null,
+  grab:  { factor: 0.812, spread: 0.18, n: 21 },
+  gojek: { factor: 1.202, spread: 0.18, n: 10 },
+  tada:  { factor: 1.248, spread: 0.18, n: 12 },
+  ryde:  { factor: 1.356, spread: 0.18, n: 3 },
+  zig: null,
 };
 
 function distKm(a, b) {
@@ -497,7 +505,7 @@ function renderResults(route, ctx) {
       <div class="badge"><img src="icons/${svc.id}.png" alt="${svc.name}"></div>
       <div class="info">
         <div class="name">${svc.name}${idx === 0 ? ' <span class="cheapest-tag">Best est.</span>' : ""}</div>
-        <div class="tier">${svc.tier}</div>
+        <div class="tier">${svc.tier}${CALIBRATION[svc.id] ? ` · fit to ${CALIBRATION[svc.id].n} rides` : ""}</div>
       </div>
       <div class="price">
         <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
