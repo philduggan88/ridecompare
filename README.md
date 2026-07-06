@@ -1,5 +1,9 @@
 # RideCompare
 
+**Live at https://philduggan88.github.io/ridecompare/** (GitHub Pages —
+works anywhere, HTTPS, so clipboard copy and the offline service worker are
+active). Pushing to `main` redeploys automatically.
+
 One search instead of five apps: enter pickup + destination once, see estimated
 fares for **Grab, Gojek, TADA, Ryde and Zig** side by side, then tap **Open** to
 jump straight into the app you pick.
