@@ -297,7 +297,12 @@
    (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
 const SERVICES = [
   { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 3.20, perKm: 0.75, perMin: 0.25, fee: 0.90,
-    deeplink: (p, d) => `grab://open?screenType=BOOKING&pickUpLatitude=${p.lat}&pickUpLongitude=${p.lon}&pickUpAddress=${encodeURIComponent(p.name)}&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
+    // Grab's booking deeplink params are undocumented; two pickup naming
+    // conventions circulate (pickUp* and source*) — send both, extras are ignored.
+    deeplink: (p, d) => `grab://open?screenType=BOOKING`
+      + `&pickUpLatitude=${p.lat}&pickUpLongitude=${p.lon}&pickUpAddress=${encodeURIComponent(p.name)}`
+      + `&sourceLatitude=${p.lat}&sourceLongitude=${p.lon}&sourceAddress=${encodeURIComponent(p.name)}`
+      + `&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
     fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
   { id: "gojek", name: "Gojek", tier: "GoCar",      base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
@@ -399,15 +404,22 @@ async function searchOneMap(q) {
   const res = await fetch(url);
   if (!res.ok) throw new Error("OneMap " + res.status);
   const data = await res.json();
-  return (data.results || []).slice(0, 6).map(r => ({
-    name: titleCase(r.SEARCHVAL),
-    address: titleCase(r.ADDRESS),
-    lat: parseFloat(r.LATITUDE),
-    lon: parseFloat(r.LONGITUDE),
-  }));
+  return (data.results || []).slice(0, 6).map(r => {
+    const nil = (v) => !v || v === "NIL";
+    // Prefer the building/mall name; fall back to what matched the search
+    const name = titleCase(!nil(r.BUILDING) ? r.BUILDING : r.SEARCHVAL);
+    // Build a clean address from parts instead of OneMap's run-together ADDRESS
+    const street = [r.BLK_NO, r.ROAD_NAME].filter((v) => !nil(v)).map(titleCase).join(" ");
+    const address = [street, nil(r.POSTAL) ? null : `S${r.POSTAL}`].filter(Boolean).join(", ") || titleCase(r.ADDRESS);
+    return { name, address, lat: parseFloat(r.LATITUDE), lon: parseFloat(r.LONGITUDE) };
+  });
 }
 function titleCase(s) {
-  return (s || "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bSg\b/, "SG");
+  return (s || "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase())
+    .replace(/\bSg\b/g, "SG").replace(/\bMrt\b/g, "MRT").replace(/\bLrt\b/g, "LRT")
+    .replace(/\bHdb\b/g, "HDB").replace(/\bCbd\b/g, "CBD")
+    // station codes: (Ew15), (Ns26 / Ew14) → uppercase
+    .replace(/\(([a-z]{2}\d+[a-z0-9\s/]*)\)/gi, (m, g) => `(${g.toUpperCase()})`);
 }
 
 /* ---------- Autocomplete wiring ---------- */
@@ -645,24 +657,42 @@ function locateMe(silent) {
     if (!silent) toast("Location not available on this device");
     return;
   }
+  if (!silent) toast("Finding you…");
+  let gotFix = false;
+  // Stage 1: instant coarse/cached fix so the map moves right away
   navigator.geolocation.getCurrentPosition(
-    (pos) => map.setView([pos.coords.latitude, pos.coords.longitude], 17),
-    () => { if (!silent) toast("Couldn't get your location — check permissions"); },
-    { enableHighAccuracy: true, timeout: 8000 }
+    (pos) => { if (!gotFix) map.setView([pos.coords.latitude, pos.coords.longitude], 16); },
+    () => {},
+    { enableHighAccuracy: false, timeout: 4000, maximumAge: 120000 }
+  );
+  // Stage 2: precise GPS fix — on mobile data this can take 10-20s, so wait for it
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      gotFix = true;
+      map.setView([pos.coords.latitude, pos.coords.longitude], 17);
+      if (!silent) toast(`Located you (±${Math.round(pos.coords.accuracy)}m)`);
+    },
+    (err) => {
+      if (!silent) toast(err.code === 1
+        ? "Location permission denied — allow it in Settings › Safari"
+        : "Couldn't get a GPS fix — drag the map instead");
+    },
+    { enableHighAccuracy: true, timeout: 25000, maximumAge: 0 }
   );
 }
 
 async function reverseGeocode(lat, lon) {
   try {
-    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18`);
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=18&addressdetails=1`);
     const data = await res.json();
-    if (data.display_name) {
-      const parts = data.display_name.split(",").map(s => s.trim());
-      // display_name is often "Name, HouseNo, Road, …" — fold the number into the road
-      const name = /^\d+[A-Za-z]?$/.test(parts[1] || "")
-        ? `${parts[0]}, ${parts[1]} ${parts[2] || ""}`.trim()
-        : parts.slice(0, 2).join(", ");
-      return { name, address: parts.slice(0, 4).join(", ") };
+    const a = data.address || {};
+    const road = [a.house_number, a.road].filter(Boolean).join(" ");
+    // Prefer the place/POI name (mall, building); else house number + road
+    const name = data.name || road || a.suburb || a.neighbourhood;
+    if (name) {
+      const address = [road !== name ? road : null, a.suburb, a.postcode ? `S${a.postcode}` : null]
+        .filter(Boolean).join(", ");
+      return { name, address: address || name };
     }
   } catch { /* fall through to coordinate label */ }
   return { name: `Pinned location (${lat.toFixed(4)}, ${lon.toFixed(4)})`, address: "Dropped pin" };
