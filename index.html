@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>RideCompare</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="RideCompare">
+<meta name="theme-color" content="#0d1117">
+<style>
+  :root {
+    --bg: #0d1117;
+    --card: #161b22;
+    --card2: #1c2330;
+    --border: #2d3646;
+    --text: #e6edf3;
+    --muted: #8b98a9;
+    --accent: #4ea1ff;
+    --green: #3fb950;
+    --amber: #d29922;
+    --radius: 14px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap { max-width: 480px; margin: 0 auto; padding: 16px 16px 40px; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 0 18px; }
+  header .logo { width: 34px; height: 34px; border-radius: 9px; background: linear-gradient(135deg, #4ea1ff, #7c5cff); display: flex; align-items: center; justify-content: center; font-size: 18px; }
+  header h1 { font-size: 20px; font-weight: 700; letter-spacing: -0.3px; }
+  header .sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+  .field { position: relative; margin-bottom: 10px; }
+  .field label { position: absolute; left: 40px; top: 7px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+  .field .dot { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); width: 10px; height: 10px; border-radius: 50%; }
+  .field.pickup .dot { background: var(--green); }
+  .field.dropoff .dot { background: #f85149; border-radius: 2px; }
+  .field input {
+    width: 100%; background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font-size: 15px; padding: 22px 36px 8px 40px; outline: none;
+  }
+  .field input:focus { border-color: var(--accent); }
+  .field .clear { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--muted); font-size: 16px; padding: 6px; cursor: pointer; display: none; }
+  .field input:not(:placeholder-shown) ~ .clear { display: block; }
+
+  .suggestions {
+    position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+    background: var(--card2); border: 1px solid var(--border); border-radius: 10px;
+    overflow: hidden; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none;
+  }
+  .suggestions.open { display: block; }
+  .suggestions .item { padding: 10px 14px; font-size: 14px; cursor: pointer; border-bottom: 1px solid var(--border); }
+  .suggestions .item:last-child { border-bottom: none; }
+  .suggestions .item:active, .suggestions .item:hover { background: rgba(78,161,255,0.12); }
+  .suggestions .item .addr { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+  .row-actions { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .chip {
+    background: var(--card2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 7px 13px; font-size: 12.5px; cursor: pointer; white-space: nowrap;
+  }
+  .chip:active { background: rgba(78,161,255,0.15); }
+  .chips-scroll { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  .chips-scroll::-webkit-scrollbar { display: none; }
+  .swap { margin-left: auto; }
+
+  .go {
+    width: 100%; background: linear-gradient(135deg, #4ea1ff, #7c5cff); border: none; border-radius: 12px;
+    color: white; font-size: 16px; font-weight: 700; padding: 14px; cursor: pointer;
+  }
+  .go:disabled { opacity: 0.45; }
+  .go:active { transform: scale(0.99); }
+
+  #routeInfo { display: none; margin: 16px 2px 8px; font-size: 13px; color: var(--muted); }
+  #routeInfo b { color: var(--text); }
+  #peakNote { color: var(--amber); }
+
+  .results { display: none; flex-direction: column; gap: 10px; margin-top: 8px; }
+  .ride {
+    display: flex; align-items: center; gap: 12px; background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 13px 14px;
+  }
+  .ride.best { border-color: var(--green); }
+  .ride .badge { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 15px; color: #fff; flex-shrink: 0; }
+  .ride .info { flex: 1; min-width: 0; }
+  .ride .name { font-size: 15px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+  .ride .tier { font-size: 11.5px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ride .price { text-align: right; margin-right: 2px; flex-shrink: 0; }
+  .ride .price .amt { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .ride .price .lbl { font-size: 10px; color: var(--muted); }
+  .cheapest-tag { font-size: 9.5px; font-weight: 700; background: rgba(63,185,80,0.18); color: var(--green); border-radius: 5px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .ride .open-btn {
+    background: var(--card2); border: 1px solid var(--border); color: var(--accent);
+    border-radius: 10px; font-size: 13px; font-weight: 650; padding: 9px 12px; cursor: pointer; flex-shrink: 0;
+  }
+  .ride .open-btn:active { background: rgba(78,161,255,0.15); }
+
+  .note { margin-top: 16px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    background: #21293a; border: 1px solid var(--border); color: var(--text);
+    border-radius: 999px; padding: 9px 18px; font-size: 13px; z-index: 100;
+    opacity: 0; transition: opacity 0.25s; pointer-events: none; white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">🚗</div>
+    <div>
+      <h1>RideCompare</h1>
+      <div class="sub">Grab · Gojek · TADA · Ryde · Zig — one search</div>
+    </div>
+  </header>
+
+  <div class="panel">
+    <div class="field pickup">
+      <span class="dot"></span>
+      <label for="pickup">Pickup</label>
+      <input id="pickup" placeholder=" " autocomplete="off" enterkeyhint="search">
+      <button class="clear" data-for="pickup">✕</button>
+      <div class="suggestions" id="pickup-sug"></div>
+    </div>
+    <div class="field dropoff">
+      <span class="dot"></span>
+      <label for="dropoff">Destination</label>
+      <input id="dropoff" placeholder=" " autocomplete="off" enterkeyhint="search">
+      <button class="clear" data-for="dropoff">✕</button>
+      <div class="suggestions" id="dropoff-sug"></div>
+    </div>
+
+    <div class="row-actions">
+      <div class="chips-scroll" id="favChips"></div>
+      <button class="chip swap" id="swapBtn" title="Swap">⇅</button>
+    </div>
+
+    <button class="go" id="goBtn" disabled>Compare fares</button>
+  </div>
+
+  <div id="routeInfo"></div>
+  <div class="results" id="results"></div>
+
+  <p class="note">
+    Fares are <b>estimates</b> from each operator's published fare structure (base + distance + time + platform fee),
+    before surge, tolls/ERP and promos — treat them as a ranking guide, not a quote.
+    Tapping <b>Open</b> jumps into the app: Grab gets your trip pre-filled; for the others your destination is
+    copied to the clipboard so you can paste it straight into the search box.
+    Long-press a result row to copy just that app's info.
+  </p>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+
+/* ---------- Fare model (SGD) ----------
+   Approximate published structures, last reviewed Jul 2026.
+   fare = base + perKm*km + perMin*min + fee, shown as a −15%/+25% range.
+   Edit here if operators revise pricing. */
+const SERVICES = [
+  { id: "grab",  name: "Grab",  tier: "JustGrab",   color: "#00B14F", base: 3.20, perKm: 0.75, perMin: 0.25, fee: 0.90,
+    deeplink: (p, d) => `grab://open?screenType=BOOKING&pickUpLatitude=${p.lat}&pickUpLongitude=${p.lon}&pickUpAddress=${encodeURIComponent(p.name)}&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
+    fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
+  { id: "gojek", name: "Gojek", tier: "GoCar",      color: "#00AA13", base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
+    deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
+  { id: "tada",  name: "TADA",  tier: "Economy",    color: "#0064FF", base: 2.80, perKm: 0.68, perMin: 0.22, fee: 0.70,
+    deeplink: () => "tada://", fallback: "https://tada.global", prefill: false },
+  { id: "ryde",  name: "Ryde",  tier: "RydeX",      color: "#8A2BE2", base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80,
+    deeplink: () => "rydesg://", fallback: "https://www.rydesharing.com", prefill: false },
+  { id: "zig",   name: "Zig",   tier: "ComfortRide", color: "#FFB300", base: 3.90, perKm: 0.75, perMin: 0.16, fee: 0.80,
+    deeplink: () => "cdgzig://", fallback: "https://zig.live", prefill: false },
+];
+
+const state = { pickup: null, dropoff: null };
+const $ = (id) => document.getElementById(id);
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+
+/* ---------- OneMap address search ---------- */
+async function searchOneMap(q) {
+  const url = `https://www.onemap.gov.sg/api/common/elastic/search?searchVal=${encodeURIComponent(q)}&returnGeom=Y&getAddrDetails=Y&pageNum=1`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("OneMap " + res.status);
+  const data = await res.json();
+  return (data.results || []).slice(0, 6).map(r => ({
+    name: titleCase(r.SEARCHVAL),
+    address: titleCase(r.ADDRESS),
+    lat: parseFloat(r.LATITUDE),
+    lon: parseFloat(r.LONGITUDE),
+  }));
+}
+function titleCase(s) {
+  return (s || "").toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).replace(/\bSg\b/, "SG");
+}
+
+/* ---------- Autocomplete wiring ---------- */
+function wireField(inputId) {
+  const input = $(inputId);
+  const sug = $(inputId + "-sug");
+  let debounce, lastQuery = "";
+
+  input.addEventListener("input", () => {
+    state[inputId] = null;
+    updateGo();
+    const q = input.value.trim();
+    clearTimeout(debounce);
+    if (q.length < 3) { sug.classList.remove("open"); return; }
+    debounce = setTimeout(async () => {
+      lastQuery = q;
+      try {
+        const results = await searchOneMap(q);
+        if (q !== lastQuery) return;
+        sug.innerHTML = "";
+        if (!results.length) { sug.classList.remove("open"); return; }
+        results.forEach(r => {
+          const div = document.createElement("div");
+          div.className = "item";
+          div.innerHTML = `<div>${r.name}</div><div class="addr">${r.address}</div>`;
+          div.addEventListener("click", () => selectPlace(inputId, r));
+          sug.appendChild(div);
+        });
+        sug.classList.add("open");
+      } catch (e) {
+        toast("Address search failed — check connection");
+      }
+    }, 300);
+  });
+
+  input.addEventListener("blur", () => setTimeout(() => sug.classList.remove("open"), 200));
+}
+
+function selectPlace(inputId, place) {
+  state[inputId] = place;
+  $(inputId).value = place.name;
+  $(inputId + "-sug").classList.remove("open");
+  updateGo();
+}
+
+function updateGo() {
+  $("goBtn").disabled = !(state.pickup && state.dropoff);
+}
+
+/* ---------- Favorites (localStorage) ---------- */
+function getFavs() { try { return JSON.parse(localStorage.getItem("rc_favs") || "[]"); } catch { return []; } }
+function saveFavs(f) { localStorage.setItem("rc_favs", JSON.stringify(f)); }
+
+function renderFavs() {
+  const wrap = $("favChips");
+  wrap.innerHTML = "";
+  getFavs().forEach((f, i) => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.textContent = `★ ${f.label}`;
+    b.title = "Tap: set as destination. Long-press: remove.";
+    let pressTimer;
+    b.addEventListener("touchstart", () => { pressTimer = setTimeout(() => removeFav(i), 700); }, { passive: true });
+    b.addEventListener("touchend", () => clearTimeout(pressTimer));
+    b.addEventListener("click", () => selectPlace(state.pickup ? "dropoff" : "pickup", f.place));
+    wrap.appendChild(b);
+  });
+  const add = document.createElement("button");
+  add.className = "chip";
+  add.textContent = "＋ Save place";
+  add.addEventListener("click", addFav);
+  wrap.appendChild(add);
+}
+function addFav() {
+  const place = state.dropoff || state.pickup;
+  if (!place) { toast("Pick an address first, then save it"); return; }
+  const label = prompt("Label for this place (e.g. Home, Work):", place.name);
+  if (!label) return;
+  const favs = getFavs();
+  favs.push({ label: label.trim(), place });
+  saveFavs(favs);
+  renderFavs();
+}
+function removeFav(i) {
+  if (!confirm(`Remove “${getFavs()[i].label}”?`)) return;
+  const favs = getFavs();
+  favs.splice(i, 1);
+  saveFavs(favs);
+  renderFavs();
+}
+
+/* ---------- Routing (OSRM public server) ---------- */
+async function getRoute(p, d) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${p.lon},${p.lat};${d.lon},${d.lat}?overview=false`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("OSRM " + res.status);
+  const data = await res.json();
+  if (!data.routes || !data.routes.length) throw new Error("No route");
+  const r = data.routes[0];
+  // OSRM assumes free-flow speeds; pad for Singapore traffic
+  return { km: r.distance / 1000, min: (r.duration / 60) * 1.35 };
+}
+
+function isPeak() {
+  const now = new Date();
+  const day = now.getDay(), h = now.getHours() + now.getMinutes() / 60;
+  const weekday = day >= 1 && day <= 5;
+  return (weekday && h >= 7 && h <= 9.5) || (h >= 17 && h <= 20);
+}
+
+/* ---------- Compare ---------- */
+async function compare() {
+  const btn = $("goBtn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Getting route…';
+  try {
+    const route = await getRoute(state.pickup, state.dropoff);
+    const info = $("routeInfo");
+    info.style.display = "block";
+    info.innerHTML = `<b>${route.km.toFixed(1)} km</b> · about <b>${Math.round(route.min)} min</b> drive` +
+      (isPeak() ? ' · <span id="peakNote">peak hours — expect the upper end</span>' : "");
+    renderResults(route);
+  } catch (e) {
+    toast("Couldn't get route — try again");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Compare fares";
+    updateGo();
+  }
+}
+
+function estimate(svc, route) {
+  const mid = svc.base + svc.perKm * route.km + svc.perMin * route.min + svc.fee;
+  return { lo: Math.round(mid * 0.85 * 10) / 10, hi: Math.round(mid * 1.25 * 10) / 10, mid };
+}
+
+function renderResults(route) {
+  const wrap = $("results");
+  wrap.innerHTML = "";
+  wrap.style.display = "flex";
+
+  const rows = SERVICES.map(svc => ({ svc, est: estimate(svc, route) }))
+    .sort((a, b) => a.est.mid - b.est.mid);
+
+  rows.forEach((row, idx) => {
+    const { svc, est } = row;
+    const div = document.createElement("div");
+    div.className = "ride" + (idx === 0 ? " best" : "");
+    div.innerHTML = `
+      <div class="badge" style="background:${svc.color}">${svc.name[0]}</div>
+      <div class="info">
+        <div class="name">${svc.name}${idx === 0 ? ' <span class="cheapest-tag">Best est.</span>' : ""}</div>
+        <div class="tier">${svc.tier}</div>
+      </div>
+      <div class="price">
+        <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
+        <div class="lbl">estimate</div>
+      </div>
+      <button class="open-btn">Open</button>
+    `;
+    div.querySelector(".open-btn").addEventListener("click", () => openService(svc));
+    wrap.appendChild(div);
+  });
+}
+
+/* ---------- Deep-link openers ---------- */
+async function openService(svc) {
+  const p = state.pickup, d = state.dropoff;
+  if (!svc.prefill && d) {
+    try {
+      await navigator.clipboard.writeText(`${d.name}, ${d.address}`);
+      toast(`Destination copied — paste it in ${svc.name}`);
+    } catch { /* clipboard needs secure context; not fatal */ }
+  }
+  const url = svc.deeplink(p, d);
+  const fallbackTimer = setTimeout(() => {
+    if (!document.hidden) window.location.href = svc.fallback;
+  }, 1800);
+  window.addEventListener("pagehide", () => clearTimeout(fallbackTimer), { once: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearTimeout(fallbackTimer);
+  }, { once: true });
+  window.location.href = url;
+}
+
+/* ---------- Init ---------- */
+wireField("pickup");
+wireField("dropoff");
+renderFavs();
+
+$("goBtn").addEventListener("click", compare);
+$("swapBtn").addEventListener("click", () => {
+  [state.pickup, state.dropoff] = [state.dropoff, state.pickup];
+  const a = $("pickup").value;
+  $("pickup").value = $("dropoff").value;
+  $("dropoff").value = a;
+  updateGo();
+});
+document.querySelectorAll(".clear").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.for;
+    $(id).value = "";
+    state[id] = null;
+    updateGo();
+  });
+});
+
+if ("serviceWorker" in navigator && location.protocol === "https:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}
+</script>
+</body>
+</html>

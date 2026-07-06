@@ -1,0 +1,13 @@
+{
+  "name": "RideCompare",
+  "short_name": "RideCompare",
+  "description": "Compare Grab, Gojek, TADA, Ryde and Zig fares from one search",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d1117",
+  "theme_color": "#0d1117",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
