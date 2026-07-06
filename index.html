@@ -109,7 +109,32 @@
   }
   .ride .open-btn:active { background: rgba(78,161,255,0.15); }
 
-  .note { margin-top: 16px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+  .footer-row { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 18px; }
+  .footer-hint { font-size: 11px; color: var(--muted); }
+  .findout {
+    background: none; border: 1px solid var(--border); color: var(--accent);
+    border-radius: 999px; font-size: 11.5px; font-weight: 600; padding: 6px 12px; cursor: pointer;
+  }
+  .findout:active { background: rgba(78,161,255,0.12); }
+
+  /* ---- Info page (slide-over) ---- */
+  .info-modal {
+    position: fixed; inset: 0; z-index: 200; background: var(--bg);
+    display: none; flex-direction: column;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .info-modal.open { display: flex; }
+  .info-modal .info-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .info-modal .info-head h2 { font-size: 16px; }
+  .info-modal .info-head button { background: none; border: none; color: var(--muted); font-size: 20px; padding: 4px 8px; cursor: pointer; }
+  .info-body { flex: 1; overflow-y: auto; padding: 18px 20px 40px; max-width: 480px; margin: 0 auto; width: 100%; }
+  .info-body h3 { font-size: 14px; margin: 20px 0 8px; color: var(--accent); }
+  .info-body h3:first-child { margin-top: 0; }
+  .info-body p, .info-body li { font-size: 13.5px; line-height: 1.65; color: var(--text); }
+  .info-body p { margin-bottom: 10px; }
+  .info-body ol, .info-body ul { padding-left: 20px; margin-bottom: 10px; }
+  .info-body li { margin-bottom: 6px; }
+  .info-body .fine { font-size: 11.5px; color: var(--muted); }
   .toast {
     position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
     background: #21293a; border: 1px solid var(--border); color: var(--text);
@@ -188,17 +213,58 @@
   <div id="routeInfo"></div>
   <div class="results" id="results"></div>
 
-  <p class="note">
-    <b>📍 Current location</b> opens a map centred on you — drag to fine-tune, then set your pickup point.
-    Zig's figure computes ComfortDelGro's <b>published meter rates exactly</b> (incl. peak/late-night
-    percentages and location fees) — only the in-traffic waiting time is estimated. Other fares are
-    <b>estimates</b> from published fare structures plus peak, late-night and airport rules,
-    <b>calibrated against your own past ride receipts</b> (the "fit to N rides" tag); surge and
-    promos still move real quotes — treat the ranking as the guide, not the number.
-    Tapping <b>Open</b> jumps into the app: Grab gets your trip pre-filled; for the others your destination is
-    copied to the clipboard so you can paste it straight into the search box.
-    Long-press a result row to copy just that app's info.
-  </p>
+  <div class="footer-row">
+    <span class="footer-hint">Estimates, not live quotes</span>
+    <button class="findout" id="infoBtn">Find out more</button>
+  </div>
+</div>
+
+<div class="info-modal" id="infoModal">
+  <div class="info-head">
+    <h2>About RideCompare</h2>
+    <button id="infoClose">✕</button>
+  </div>
+  <div class="info-body">
+    <h3>What is this?</h3>
+    <p>RideCompare shows estimated fares for <b>Grab, Gojek, TADA, Ryde and Zig</b> from a single
+      search, so you can see which one or two apps are worth opening instead of checking all five.
+      Tapping <b>Open</b> jumps straight into the chosen app — Grab gets your trip pre-filled, and for
+      the others your destination is copied to the clipboard for a quick paste.</p>
+    <p>None of the five operators offer a public fare API, so <b>no third-party app can show their
+      live surge prices</b>. RideCompare instead builds honest estimates and is upfront about the
+      uncertainty — the ranking is the point, not the exact number.</p>
+
+    <h3>How each estimate is built</h3>
+    <ol>
+      <li><b>Addresses → coordinates</b> via OneMap, the Singapore government geocoder.</li>
+      <li><b>Real driving route</b> (distance and time) from the OSRM public router, with the drive
+        time padded ×1.35 for Singapore traffic.</li>
+      <li><b>Each operator's fare structure</b> is applied: base fare + per-km + per-minute +
+        platform fee, plus rule-based extras where they apply — peak and late-night rates, airport
+        pickup fees, and the CBD evening surcharge. The route summary lists which rules were
+        applied to your search.</li>
+      <li><b>Zig is special</b>: ComfortDelGro publishes its taxi meter rates to the cent, so the
+        Zig figure computes the meter <i>exactly</i> (flagdown, distance units, 25% peak / 50%
+        late-night, location fees, booking + platform fees). Only the in-traffic waiting time is
+        estimated, hence its tighter "meter est." band.</li>
+      <li><b>Calibration</b>: rows tagged "fit to N rides" are corrected by factors fitted from the
+        owner's actual past e-receipts — each receipt's route was rebuilt the same way as above and
+        the model was scaled to match what was really paid. This fixes systematic bias in the
+        published rate tables (some operators consistently price above or below them).</li>
+    </ol>
+
+    <h3>Why a range and not a number?</h3>
+    <p>Real quotes move with surge, driver supply and promos, which can't be known from outside the
+      apps. The band width reflects the spread observed in real receipts (roughly ±18%) — most
+      rides land inside it, but a heavy surge can still exceed it.</p>
+
+    <h3>Data &amp; privacy</h3>
+    <p class="fine">Everything runs in your browser. Searched addresses are sent only to OneMap and
+      OSRM to geocode and route your trip — there are no accounts, no tracking, and nothing is
+      stored server-side. Saved places live in your device's local storage. The receipt data behind
+      the calibration never leaves the owner's computer; only the fitted correction factors are in
+      this app.</p>
+  </div>
 </div>
 
 <div class="map-modal" id="mapModal">
@@ -607,6 +673,8 @@ async function confirmMapPoint() {
   toast("Pickup set from map");
 }
 
+$("infoBtn").addEventListener("click", () => $("infoModal").classList.add("open"));
+$("infoClose").addEventListener("click", () => $("infoModal").classList.remove("open"));
 $("mapBtn").addEventListener("click", openMap);
 $("mapClose").addEventListener("click", () => $("mapModal").classList.remove("open"));
 $("mapLocate").addEventListener("click", () => locateMe(false));
