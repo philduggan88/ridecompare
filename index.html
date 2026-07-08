@@ -249,23 +249,22 @@
         Zig figure computes the meter <i>exactly</i> (flagdown, distance units, 25% peak / 50%
         late-night, location fees, booking + platform fees). Only the in-traffic waiting time is
         estimated, hence its tighter "meter est." band.</li>
-      <li><b>Calibration</b>: rows tagged "fit to N rides" are corrected by factors fitted from the
-        owner's actual past e-receipts — each receipt's route was rebuilt the same way as above and
-        the model was scaled to match what was really paid. This fixes systematic bias in the
-        published rate tables (some operators consistently price above or below them).</li>
+      <li><b>Surge</b>: at peak and late-night the fare is nudged by each operator's <i>documented</i>
+        surge behaviour — TADA advertises minimal peak surge, Grab uses the most aggressive dynamic
+        pricing, and Zig is metered so it never surges. These come from public fare-comparison data,
+        not from any individual's ride history, so the estimates apply to everyone equally.</li>
     </ol>
 
     <h3>Why a range and not a number?</h3>
     <p>Real quotes move with surge, driver supply and promos, which can't be known from outside the
-      apps. The band width reflects the spread observed in real receipts (roughly ±18%) — most
-      rides land inside it, but a heavy surge can still exceed it.</p>
+      apps. The band (roughly ±12–16%) covers ordinary variation — most rides land inside it, but a
+      heavy surge can still exceed it. The ranking is more reliable than the exact figure.</p>
 
     <h3>Data &amp; privacy</h3>
     <p class="fine">Everything runs in your browser. Searched addresses are sent only to OneMap and
       OSRM to geocode and route your trip — there are no accounts, no tracking, and nothing is
-      stored server-side. Saved places live in your device's local storage. The receipt data behind
-      the calibration never leaves the owner's computer; only the fitted correction factors are in
-      this app.</p>
+      stored server-side. Saved places live in your device's local storage. Fare estimates are built
+      entirely from public rate cards and public surge data — no personal ride history is used.</p>
   </div>
 </div>
 
@@ -318,29 +317,28 @@ const SERVICES = [
 ];
 
 /* ---------- Surcharge & surge rules (reviewed Jul 2026) ----------
-   Taxi (Zig/CDG) rules are published and exact; PHV surge buckets are
-   modelled from reported patterns and get sharper once CALIBRATION is
-   filled from real ride receipts. */
+   Taxi (Zig/CDG) rules are published and exact; PHV surge is modelled
+   per-operator in the SURGE table below, from public fare-comparison data. */
 const CHANGI = { lat: 1.3644, lon: 103.9915 };
 // Rough CBD box: Raffles Place / Tanjong Pagar / Marina downtown core
 const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
 
-// Per-service correction factors fitted from Philip's own e-receipts
-// (49 SGD rides, Dec 2025–Jul 2026): factor = median(actual / modelled)
-// with routes rebuilt via OneMap+OSRM exactly as the app computes them;
-// spread = 1.5×MAD capped at 0.18. Re-fit with scratchpad fit_calibration.py
-// on fresh receipts when estimates start drifting. zig stays null — its
-// meter computation is exact and the receipts corroborate it.
 // Set to your Buy Me a Coffee (or Ko-fi etc.) page URL to show the ☕ footer
 // link, e.g. "https://buymeacoffee.com/yourname". null hides it entirely.
-const SUPPORT_URL = null;
+const SUPPORT_URL = "https://buymeacoffee.com/philipduggan";
 
-const CALIBRATION = {
-  grab:  { factor: 0.812, spread: 0.18, n: 21 },
-  gojek: { factor: 1.202, spread: 0.18, n: 10 },
-  tada:  { factor: 1.248, spread: 0.18, n: 12 },
-  ryde:  { factor: 1.356, spread: 0.18, n: 3 },
-  zig: null,
+// Operator surge multipliers — PUBLIC data only, no personal ride history.
+// Off-peak fares come straight from each operator's published rate card
+// (base/perKm/perMin/fee above). These model each operator's documented surge
+// behaviour at peak / late night, so estimates stay operator-neutral and apply
+// to anyone. Sources: Straits Times Jan-2026 five-app fare test + each
+// operator's own positioning — TADA markets minimal peak surge, Grab runs the
+// most aggressive dynamic pricing, Zig is metered (never surges, priced exactly).
+const SURGE = {
+  grab:  { peak: 1.30, late: 1.25 },
+  gojek: { peak: 1.20, late: 1.20 },
+  tada:  { peak: 1.06, late: 1.10 },
+  ryde:  { peak: 1.15, late: 1.18 },
 };
 
 function distKm(a, b) {
@@ -557,11 +555,10 @@ function estimate(svc, route, ctx) {
   }
   let mid = svc.base + svc.perKm * route.km + svc.perMin * route.min + svc.fee;
   if (ctx.airportPickup) mid += ctx.airportEvening ? 5 : 3;
-  let spread = 0.10;
-  if (ctx.lateNight) { mid *= 1.20; spread = 0.15; }
-  else if (ctx.phvPeak) { mid *= 1.18; spread = 0.15; }
-  const cal = CALIBRATION[svc.id];
-  if (cal) { mid *= cal.factor; spread = cal.spread; }
+  const s = SURGE[svc.id] || {};
+  let spread = 0.12;
+  if (ctx.lateNight && s.late) { mid *= s.late; spread = 0.16; }
+  else if (ctx.phvPeak && s.peak) { mid *= s.peak; spread = 0.16; }
   return band(mid, spread);
 }
 
@@ -589,11 +586,11 @@ function renderResults(route, ctx) {
       <div class="badge"><img src="icons/${svc.id}.png" alt="${svc.name}"></div>
       <div class="info">
         <div class="name">${svc.name}${idx === 0 ? ' <span class="cheapest-tag">Best est.</span>' : ""}</div>
-        <div class="tier">${svc.tier}${CALIBRATION[svc.id] ? ` · fit to ${CALIBRATION[svc.id].n} rides` : ""}</div>
+        <div class="tier">${svc.tier}</div>
       </div>
       <div class="price">
         <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
-        <div class="lbl">${svc.metered ? "meter est." : (CALIBRATION[svc.id] ? "calibrated" : "estimate")}</div>
+        <div class="lbl">${svc.metered ? "meter est." : "estimate"}</div>
       </div>
       ${svc.universal
         ? `<a class="open-btn" href="${svc.universal}">Open</a>`
