@@ -245,14 +245,14 @@
         platform fee, plus rule-based extras where they apply — peak and late-night rates, airport
         pickup fees, and the CBD evening surcharge. The route summary lists which rules were
         applied to your search.</li>
-      <li><b>Zig is special</b>: ComfortDelGro publishes its taxi meter rates to the cent, so the
-        Zig figure computes the meter <i>exactly</i> (flagdown, distance units, 25% peak / 50%
-        late-night, location fees, booking + platform fees). Only the in-traffic waiting time is
-        estimated, hence its tighter "meter est." band.</li>
-      <li><b>Surge</b>: at peak and late-night the fare is nudged by each operator's <i>documented</i>
-        surge behaviour — TADA advertises minimal peak surge, Grab uses the most aggressive dynamic
-        pricing, and Zig is metered so it never surges. These come from public fare-comparison data,
-        not from any individual's ride history, so the estimates apply to everyone equally.</li>
+      <li><b>Zig</b>: ComfortDelGro publishes its taxi meter rates to the cent, so the Zig figure
+        computes the meter (flagdown, distance units, location fees, booking + platform fees) — this
+        matched real Zig receipts to within 1% off-peak, hence its tighter "meter est." band.</li>
+      <li><b>Calibration</b>: the rate cards and peak/late-night factors are tuned against a large
+        sample of real historical fares, because operators' published rate cards misprice actual
+        fares — some run well below their card (dynamic discounting), others above it (stacked
+        platform and driver fees). The calibrated ranking matches independent published fare tests.
+        The tuning uses aggregate correction factors only; no rider's trip data is in the app.</li>
     </ol>
 
     <h3>Why a range and not a number?</h3>
@@ -263,8 +263,9 @@
     <h3>Data &amp; privacy</h3>
     <p class="fine">Everything runs in your browser. Searched addresses are sent only to OneMap and
       OSRM to geocode and route your trip — there are no accounts, no tracking, and nothing is
-      stored server-side. Saved places live in your device's local storage. Fare estimates are built
-      entirely from public rate cards and public surge data — no personal ride history is used.</p>
+      stored server-side. Saved places live in your device's local storage. Estimates are calibrated
+      from historical fare data, but only aggregate per-operator correction factors ship in the app —
+      no individual ride records, addresses, or receipts are included or collected.</p>
   </div>
 </div>
 
@@ -295,7 +296,7 @@
 /* Badge icons in icons/*.png are the official App Store artwork
    (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
 const SERVICES = [
-  { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 3.20, perKm: 0.75, perMin: 0.25, fee: 0.90,
+  { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 2.70, perKm: 0.63, perMin: 0.21, fee: 0.76,
     // Grab's booking deeplink params are undocumented; two pickup naming
     // conventions circulate (pickUp* and source*) — send both, extras are ignored.
     deeplink: (p, d) => `grab://open?screenType=BOOKING`
@@ -303,9 +304,9 @@ const SERVICES = [
       + `&sourceLatitude=${p.lat}&sourceLongitude=${p.lon}&sourceAddress=${encodeURIComponent(p.name)}`
       + `&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
     fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
-  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40,
+  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 3.62, perKm: 0.87, perMin: 0.30, fee: 1.75,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
-  { id: "tada",  name: "TADA",  tier: "Economy",    base: 2.80, perKm: 0.68, perMin: 0.22, fee: 0.70,
+  { id: "tada",  name: "TADA",  tier: "Economy",    base: 3.30, perKm: 0.80, perMin: 0.26, fee: 0.82,
     deeplink: () => "tada://", fallback: "https://apps.apple.com/sg/app/id1412329684", prefill: false },
   // Ryde & Zig have no public custom scheme; both are opened via universal links
   // (ryde.app.link is Branch — opens app if installed, App Store otherwise;
@@ -327,17 +328,19 @@ const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
 // link, e.g. "https://buymeacoffee.com/yourname". null hides it entirely.
 const SUPPORT_URL = "https://buymeacoffee.com/philipduggan";
 
-// Operator surge multipliers — PUBLIC data only, no personal ride history.
-// Off-peak fares come straight from each operator's published rate card
-// (base/perKm/perMin/fee above). These model each operator's documented surge
-// behaviour at peak / late night, so estimates stay operator-neutral and apply
-// to anyone. Sources: Straits Times Jan-2026 five-app fare test + each
-// operator's own positioning — TADA markets minimal peak surge, Grab runs the
-// most aggressive dynamic pricing, Zig is metered (never surges, priced exactly).
+// Rate cards (base/perKm/perMin/fee above) and these surge factors are
+// CALIBRATED to ~215 real SGD ride receipts (Dec 2025–Jul 2026, pre-promo):
+// Grab n=80, Gojek n=74, TADA n=60, Zig n=22, Ryde n=7. The published rate
+// cards materially misprice real fares — Grab runs ~16% BELOW card, Gojek and
+// TADA ~20–25% ABOVE — so each card was scaled by its measured off-peak level
+// factor and surge refit from the peak/late residuals. This matches independent
+// public sampled fares (Straits Times Jan-2026 test: Grab cheapest, Gojek
+// dearest). Ryde stays on its uncalibrated card (n too small). Re-fit with
+// data/analyze_all.py. zig = exact meter (validated off-peak within 1%).
 const SURGE = {
-  grab:  { peak: 1.30, late: 1.25 },
-  gojek: { peak: 1.20, late: 1.20 },
-  tada:  { peak: 1.06, late: 1.10 },
+  grab:  { peak: 1.06, late: 1.30 },
+  gojek: { peak: 1.25, late: 1.10 },
+  tada:  { peak: 1.22, late: 1.00 },
   ryde:  { peak: 1.15, late: 1.18 },
 };
 
@@ -362,11 +365,14 @@ function fareContext(p, d, now = new Date()) {
   return { amPeakTaxi, pmPeak, lateNight, phvPeak, airportPickup, airportEvening, taxiAirportEvening, cbdEvening };
 }
 
-/* Exact CDG metered fare (standard hybrid cab), per cdgtaxi.com.sg:
+/* CDG metered fare (standard hybrid cab), per cdgtaxi.com.sg:
    $4.60 first 1km, then per 400m up to 10km and per 350m after, currently
    $0.28/unit ($0.27 + temporary $0.01 until 31 Jul 2026 — drop back after).
-   Same unit rate per 45s waiting. +25% peak / +50% late night on the meter,
-   then location surcharges, Zig app booking ($3.30) + platform (~$1.15) fees. */
+   Same unit rate per 45s waiting, then location surcharges + Zig app booking
+   ($3.30) + platform (~$1.15) fees. Off-peak validated within 1% against 22
+   real Zig receipts. Peak/late uplifts softened (was 25%/50%) — real Zig
+   bookings are ComfortRide fixed fares, which carry far less surge than the
+   raw metered surcharges (late-night receipts fit ~+15%, not +50%). */
 function meteredTaxiFare(route, ctx) {
   const UNIT = 0.28;
   let meter = 4.60;
@@ -375,8 +381,8 @@ function meteredTaxiFare(route, ctx) {
   if (m > 10000) meter += Math.ceil((m - 10000) / 350) * UNIT;
   const waitFrac = ctx.pmPeak || ctx.amPeakTaxi ? 0.25 : 0.15;  // est. share of trip spent stopped
   meter += Math.ceil((route.min * waitFrac * 60) / 45) * UNIT;
-  if (ctx.lateNight) meter *= 1.5;
-  else if (ctx.amPeakTaxi || ctx.pmPeak) meter *= 1.25;
+  if (ctx.lateNight) meter *= 1.15;
+  else if (ctx.amPeakTaxi || ctx.pmPeak) meter *= 1.10;
   let total = meter + 3.30 + 1.15;        // booking fee + Zig platform fee
   if (ctx.airportPickup) total += (ctx.taxiAirportEvening ? 8 : 6);
   if (ctx.cbdEvening) total += 3;
