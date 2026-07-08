@@ -296,7 +296,7 @@
 /* Badge icons in icons/*.png are the official App Store artwork
    (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
 const SERVICES = [
-  { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 2.70, perKm: 0.63, perMin: 0.21, fee: 0.76,
+  { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 2.58, perKm: 0.61, perMin: 0.20, fee: 0.73,
     // Grab's booking deeplink params are undocumented; two pickup naming
     // conventions circulate (pickUp* and source*) — send both, extras are ignored.
     deeplink: (p, d) => `grab://open?screenType=BOOKING`
@@ -304,7 +304,7 @@ const SERVICES = [
       + `&sourceLatitude=${p.lat}&sourceLongitude=${p.lon}&sourceAddress=${encodeURIComponent(p.name)}`
       + `&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
     fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
-  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 3.62, perKm: 0.87, perMin: 0.30, fee: 1.75,
+  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 3.56, perKm: 0.86, perMin: 0.29, fee: 1.72,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
   { id: "tada",  name: "TADA",  tier: "Economy",    base: 3.30, perKm: 0.80, perMin: 0.26, fee: 0.82,
     deeplink: () => "tada://", fallback: "https://apps.apple.com/sg/app/id1412329684", prefill: false },
@@ -329,17 +329,18 @@ const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
 const SUPPORT_URL = "https://buymeacoffee.com/philipduggan";
 
 // Rate cards (base/perKm/perMin/fee above) and these surge factors are
-// CALIBRATED to ~215 real SGD ride receipts (Dec 2025–Jul 2026, pre-promo):
-// Grab n=80, Gojek n=74, TADA n=60, Zig n=22, Ryde n=7. The published rate
-// cards materially misprice real fares — Grab runs ~16% BELOW card, Gojek and
-// TADA ~20–25% ABOVE — so each card was scaled by its measured off-peak level
-// factor and surge refit from the peak/late residuals. This matches independent
-// public sampled fares (Straits Times Jan-2026 test: Grab cheapest, Gojek
-// dearest). Ryde stays on its uncalibrated card (n too small). Re-fit with
-// data/analyze_all.py. zig = exact meter (validated off-peak within 1%).
+// CALIBRATED to 361 real SGD ride receipts (Jul 2025–Jul 2026, pre-promo):
+// Grab n=115, Gojek n=157, TADA n=60, Zig n=22, Ryde n=7. The published rate
+// cards materially misprice real fares — Grab runs ~19% BELOW card, Gojek and
+// TADA ~18–23% ABOVE — so each card was scaled by its measured off-peak level
+// factor (grab 0.807, gojek 1.228, tada 1.178) and surge refit from the
+// peak/late residuals. This matches independent public sampled fares (Straits
+// Times Jan-2026 test: Grab cheapest, Gojek dearest). Ryde stays on its
+// uncalibrated card (n too small). Re-fit with data/analyze_all.py. zig =
+// meter, validated off-peak within 1% against 22 real Zig receipts.
 const SURGE = {
-  grab:  { peak: 1.06, late: 1.30 },
-  gojek: { peak: 1.25, late: 1.10 },
+  grab:  { peak: 1.10, late: 1.30 },
+  gojek: { peak: 1.10, late: 1.12 },
   tada:  { peak: 1.22, late: 1.00 },
   ryde:  { peak: 1.15, late: 1.18 },
 };
