@@ -27,10 +27,13 @@ self.addEventListener("fetch", (e) => {
     caches.match(e.request).then((hit) => {
       const refetch = fetch(e.request)
         .then((res) => {
-          if (res.ok) caches.open(CACHE).then((c) => c.put(e.request, res.clone()));
+          if (res.ok) e.waitUntil(caches.open(CACHE).then((c) => c.put(e.request, res.clone())));
           return res;
         })
         .catch(() => hit);
+      // Background refresh must be tied to the event lifetime, or the SW may
+      // be killed after responding from cache and the update silently lost.
+      if (hit) e.waitUntil(refetch);
       return hit || refetch;
     })
   );

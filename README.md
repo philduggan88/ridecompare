@@ -17,7 +17,8 @@ can't be pulled by a third-party app. RideCompare instead:
 2. Gets real driving distance/time from the public **OSRM** router
    (padded ×1.35 for SG traffic).
 3. Applies each operator's published fare structure
-   (base + per-km + per-min + platform fee) and shows a −15%/+25% range.
+   (base + per-km + per-min + platform fee) and shows a ±12% range
+   (±16% at peak/late-night, ±5% for the Zig meter).
 
 The ranking is the useful part — it tells you which one or two apps are worth
 opening for a real quote. Fare tables live in the `SERVICES` array at the top

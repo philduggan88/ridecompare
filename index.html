@@ -293,7 +293,8 @@
 
 /* ---------- Fare model (SGD) ----------
    Approximate published structures, last reviewed Jul 2026.
-   fare = base + perKm*km + perMin*min + fee, shown as a −15%/+25% range.
+   fare = base + perKm*km + perMin*min + fee, shown as a ±12% range
+   (±16% at peak/late-night, ±5% for the Zig meter).
    Edit here if operators revise pricing. */
 /* Badge icons in icons/*.png are the official App Store artwork
    (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
@@ -323,6 +324,10 @@ const SERVICES = [
    Taxi (Zig/CDG) rules are published and exact; PHV surge is modelled
    per-operator in the SURGE table below, from public fare-comparison data. */
 const CHANGI = { lat: 1.3644, lon: 103.9915 };
+// Terminal 4 sits ~3km south of the T1–T3 cluster — outside its 2.5km radius —
+// so it needs its own point. Kept tight (1.2km): wide enough for T4 + car park,
+// but Changi Village (2.8km from T1/T2) and SUTD (2.2km from T4) stay outside.
+const CHANGI_T4 = { lat: 1.3387, lon: 103.9831 };
 // Rough CBD box: Raffles Place / Tanjong Pagar / Marina downtown core
 const CBD = { latMin: 1.26, latMax: 1.297, lonMin: 103.83, lonMax: 103.862 };
 
@@ -361,7 +366,7 @@ function fareContext(p, d, now = new Date()) {
   const pmPeak = t >= 18;                 // 6pm–11:59pm daily, 25% on the meter
   const lateNight = t < 6;                // midnight–5:59am, 50% on the meter
   const phvPeak = (weekday && t >= 7 && t < 9.5) || (t >= 17 && t < 20);
-  const airportPickup = p && distKm(p, CHANGI) < 2.5;
+  const airportPickup = p && (distKm(p, CHANGI) < 2.5 || distKm(p, CHANGI_T4) < 1.2);
   const airportEvening = t >= 17 && (dow === 5 || dow === 6 || dow === 0);
   const taxiAirportEvening = t >= 17;     // CDG airport fee is $8 from 5pm, $6 otherwise
   const cbdEvening = p && t >= 17 &&
@@ -493,6 +498,10 @@ function renderFavs() {
     let pressTimer;
     b.addEventListener("touchstart", () => { pressTimer = setTimeout(() => removeFav(i), 700); }, { passive: true });
     b.addEventListener("touchend", () => clearTimeout(pressTimer));
+    // Also cancel on scroll/interruption so scrolling past a chip doesn't
+    // pop the Remove confirm.
+    b.addEventListener("touchmove", () => clearTimeout(pressTimer), { passive: true });
+    b.addEventListener("touchcancel", () => clearTimeout(pressTimer));
     b.addEventListener("click", () => selectPlace(state.pickup ? "dropoff" : "pickup", f.place));
     wrap.appendChild(b);
   });
@@ -564,12 +573,15 @@ function estimate(svc, route, ctx) {
     // Published meter rates are exact; the ±5% covers the waiting-time guess.
     return band(meteredTaxiFare(route, ctx), 0.05);
   }
-  let mid = svc.base + svc.perKm * route.km + svc.perMin * route.min + svc.fee;
-  if (ctx.airportPickup) mid += ctx.airportEvening ? 5 : 3;
+  // Surge applies to the metered component only; flat fees (platform/booking
+  // fee, airport pickup fee) are added after — same shape as meteredTaxiFare.
+  let mid = svc.base + svc.perKm * route.km + svc.perMin * route.min;
   const s = SURGE[svc.id] || {};
   let spread = 0.12;
   if (ctx.lateNight && s.late) { mid *= s.late; spread = 0.16; }
   else if (ctx.phvPeak && s.peak) { mid *= s.peak; spread = 0.16; }
+  mid += svc.fee;
+  if (ctx.airportPickup) mid += ctx.airportEvening ? 5 : 3;
   return band(mid, spread);
 }
 
@@ -622,7 +634,10 @@ function copyDestination(svc) {
   const d = state.dropoff;
   if (!d) return;
   // Fire-and-forget: never await before navigating, or iOS may drop the
-  // user-activation window the navigation needs.
+  // user-activation window the navigation needs. navigator.clipboard is
+  // undefined on non-HTTPS origins (the LAN setup) — a clipboard failure
+  // must never block the deep link, so guard rather than throw.
+  if (!navigator.clipboard?.writeText) return;
   navigator.clipboard.writeText(`${d.name}, ${d.address}`)
     .then(() => toast(`Destination copied — paste it in ${svc.name}`))
     .catch(() => {});
