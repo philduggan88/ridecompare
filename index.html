@@ -256,7 +256,9 @@
         dynamic discounting, with that discount vanishing at peak, while Gojek and TADA quote at
         or above card once platform fees stack. Each operator therefore carries a level factor and
         surge profile derived from those published samples and each operator's published 2026
-        platform fees. Everything in the model traces to a public source.</li>
+        platform fees, and published <b>minimum fares</b> floor the short-trip estimates. Operators
+        whose sampled quotes swing more (Gojek especially) get wider bands. Everything in the model
+        traces to a public source.</li>
     </ol>
 
     <h3>Why a range and not a number?</h3>
@@ -303,6 +305,7 @@
    (iTunes lookup API, artworkUrl512) — re-download if an app rebrands. */
 const SERVICES = [
   { id: "grab",  name: "Grab",  tier: "JustGrab",   base: 3.20, perKm: 0.75, perMin: 0.25, fee: 1.00, level: 0.85,
+    minFare: 6.80,   // published S$5.80 driver minimum (Nov 2025) + ~$1 platform fee
     // Grab's booking deeplink params are undocumented; two pickup naming
     // conventions circulate (pickUp* and source*) — send both, extras are ignored.
     deeplink: (p, d) => `grab://open?screenType=BOOKING`
@@ -310,7 +313,13 @@ const SERVICES = [
       + `&sourceLatitude=${p.lat}&sourceLongitude=${p.lon}&sourceAddress=${encodeURIComponent(p.name)}`
       + `&dropOffLatitude=${d.lat}&dropOffLongitude=${d.lon}&dropOffAddress=${encodeURIComponent(d.name)}`,
     fallback: "https://apps.apple.com/sg/app/id647268330", prefill: true },
-  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 2.90, perKm: 0.70, perMin: 0.24, fee: 1.40, level: 1.10,
+  // Gojek base/perKm from its OWN published GoCar card (base S$3.40, S$0.55–
+  // 0.80/km → mid 0.68); perMin retained as a proxy for its time/demand
+  // component, level refit to the published midday sample on that card.
+  // Widest bands of the five: its sampled quotes swing hardest ($12 vs $16
+  // on comparable routes in the same published test).
+  { id: "gojek", name: "Gojek", tier: "GoCar",      base: 3.40, perKm: 0.68, perMin: 0.24, fee: 1.40, level: 1.18,
+    minFare: 7.40, spreadOff: 0.18, spreadPeak: 0.22,
     deeplink: () => "gojek://", fallback: "https://apps.apple.com/sg/app/id944875099", prefill: false },
   { id: "tada",  name: "TADA",  tier: "Economy",    base: 2.80, perKm: 0.68, perMin: 0.22, fee: 1.25, level: 1.10,
     deeplink: () => "tada://", fallback: "https://apps.apple.com/sg/app/id1412329684", prefill: false },
@@ -352,6 +361,11 @@ const SUPPORT_URL = "https://buymeacoffee.com/philipduggan";
 // discounting below card off-peak), gojek 1.10, tada 1.10, ryde 1.05 — and
 // this surge table: Grab's discount disappears at peak (ST: costliest on
 // average at morning/lunch), TADA advertises minimal surge, Gojek volatile.
+// 3. Published minimum fares floor short trips: Grab S$5.80 driver minimum
+//    (Grab/NPHVA press release, Nov 2025) + platform fee; Gojek S$6 published
+//    minimum + platform fee. Gojek's base/perKm come from its own published
+//    GoCar card (S$3.40 + S$0.55–0.80/km). No published minimums exist for
+//    TADA/Ryde, so none are invented.
 // No individual ride history is used anywhere in this model.
 const SURGE = {
   grab:  { peak: 1.35, late: 1.25 },
@@ -586,12 +600,21 @@ function estimate(svc, route, ctx) {
   // are added after, unscaled — same shape as meteredTaxiFare.
   let mid = (svc.base + svc.perKm * route.km + svc.perMin * route.min) * (svc.level || 1);
   const s = SURGE[svc.id] || {};
-  let spread = 0.13;
-  if (ctx.lateNight && s.late) { mid *= s.late; spread = 0.18; }
-  else if (ctx.phvPeak && s.peak) { mid *= s.peak; spread = 0.18; }
+  const surged = ctx.lateNight || ctx.phvPeak;
+  if (ctx.lateNight && s.late) mid *= s.late;
+  else if (ctx.phvPeak && s.peak) mid *= s.peak;
   mid += svc.fee;
+  // Published minimum fares floor short trips (e.g. Grab S$5.80 driver min
+  // from Nov 2025 + platform fee; Gojek's published S$6 min + platform fee).
+  if (svc.minFare) mid = Math.max(mid, svc.minFare);
   if (ctx.airportPickup) mid += ctx.airportEvening ? 5 : 3;
-  return band(mid, spread);
+  // Band width is per-operator where public samples show extra volatility
+  // (Gojek's sampled quotes swing hardest); defaults 0.13 / 0.18 surged.
+  const spread = surged ? (svc.spreadPeak || 0.18) : (svc.spreadOff || 0.13);
+  const b = band(mid, spread);
+  // A published minimum also floors the band's low end — no quote goes below it.
+  if (svc.minFare) b.lo = Math.max(b.lo, svc.minFare);
+  return b;
 }
 
 function band(mid, spread) {
