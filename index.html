@@ -246,9 +246,10 @@
         pickup fees, and the CBD evening surcharge. The route summary lists which rules were
         applied to your search.</li>
       <li><b>Zig</b>: ComfortDelGro publishes its taxi meter rates to the cent — flagdown, distance
-        units, the 25% peak / 50% late-night surcharges, location fees, and booking + platform
-        fees — so the Zig figure computes the published meter directly, hence its tighter
-        "meter est." band.</li>
+        units, location fees, and booking + platform fees — so the Zig figure computes the meter
+        directly, softened to the fixed-fare "Taxi or Car" product the Zig app actually quotes
+        (which surges far less than the published 25%/50% metered surcharges), hence its tighter
+        "fixed-fare est." band.</li>
       <li><b>Calibration to published fare tests</b>: operators' rate cards misprice what riders
         actually pay — press fare tests (the Straits Times' 45-ride January 2026 comparison,
         Vulcan Post's five-app test) consistently quote Grab below its card off-peak thanks to
@@ -267,8 +268,9 @@
     <p class="fine">Everything runs in your browser. Searched addresses are sent only to OneMap and
       OSRM to geocode and route your trip — there are no accounts, no tracking, and nothing is
       stored server-side. Saved places live in your device's local storage. Estimates are built
-      entirely from public sources — operator rate cards, published platform fees, and press fare
-      tests — no individual ride records, addresses, or receipts are included or collected.</p>
+      from public sources — operator rate cards, published platform fees, and press fare tests —
+      plus aggregate correction factors from historical fares; no individual ride records,
+      addresses, or receipts are included or collected.</p>
   </div>
 </div>
 
@@ -317,7 +319,7 @@ const SERVICES = [
   //  zig.live/campaigns/* is in Zig's apple-app-site-association).
   { id: "ryde",  name: "Ryde",  tier: "RydeX",      base: 2.90, perKm: 0.70, perMin: 0.22, fee: 0.80, level: 1.05,
     universal: "https://ryde.app.link/download-ryde", prefill: false },
-  { id: "zig",   name: "Zig",   tier: "Metered taxi", metered: true,
+  { id: "zig",   name: "Zig",   tier: "Taxi or Car",  metered: true,
     universal: "https://zig.live/campaigns/app", prefill: false },
 ];
 
@@ -383,10 +385,12 @@ function fareContext(p, d, now = new Date()) {
    $4.60 first 1km, then per 400m up to 10km and per 350m after, currently
    $0.28/unit ($0.27 + temporary $0.01 until 31 Jul 2026 — drop back after).
    Same unit rate per 45s waiting, then location surcharges + Zig app booking
-   ($3.30) + platform (~$1.15) fees. Peak (+25%) and late-night (+50%)
-   surcharges are CDG's published metered rates — the public-data basis for
-   this app. Note Zig's ComfortRide fixed-fare product can quote below the
-   surcharged meter at peak, so the meter figure is the upper anchor. */
+   ($3.30) + platform (~$1.15) fees. The Zig app books ComfortRide-style
+   FIXED fares, which surge far less than the published metered surcharges
+   (+25%/+50%): historical Zig receipts fit ~+10% peak / +15% late, and a
+   live Aug-2026 1am check quoted $16.20 where the surcharged meter implies
+   ~$26 — so those softer uplifts are used. Street-hail metered fares can
+   run higher; treat the published surcharged meter as the upper bound. */
 function meteredTaxiFare(route, ctx) {
   const UNIT = 0.28;
   let meter = 4.60;
@@ -395,8 +399,8 @@ function meteredTaxiFare(route, ctx) {
   if (m > 10000) meter += Math.ceil((m - 10000) / 350) * UNIT;
   const waitFrac = ctx.pmPeak || ctx.amPeakTaxi ? 0.25 : 0.15;  // est. share of trip spent stopped
   meter += Math.ceil((route.min * waitFrac * 60) / 45) * UNIT;
-  if (ctx.lateNight) meter *= 1.5;
-  else if (ctx.amPeakTaxi || ctx.pmPeak) meter *= 1.25;
+  if (ctx.lateNight) meter *= 1.15;
+  else if (ctx.amPeakTaxi || ctx.pmPeak) meter *= 1.10;
   let total = meter + 3.30 + 1.15;        // booking fee + Zig platform fee
   if (ctx.airportPickup) total += (ctx.taxiAirportEvening ? 8 : 6);
   if (ctx.cbdEvening) total += 3;
@@ -574,7 +578,7 @@ async function compare() {
 
 function estimate(svc, route, ctx) {
   if (svc.metered) {
-    // Published meter rates are exact; the ±5% covers the waiting-time guess.
+    // Meter-derived fixed fare; the ±5% covers the waiting-time guess.
     return band(meteredTaxiFare(route, ctx), 0.05);
   }
   // Published card × public-test level factor; surge applies to the metered
@@ -618,7 +622,7 @@ function renderResults(route, ctx) {
       </div>
       <div class="price">
         <div class="amt">$${est.lo.toFixed(2)}–${est.hi.toFixed(2)}</div>
-        <div class="lbl">${svc.metered ? "meter est." : "estimate"}</div>
+        <div class="lbl">${svc.metered ? "fixed-fare est." : "estimate"}</div>
       </div>
       ${svc.universal
         ? `<a class="open-btn" href="${svc.universal}">Open</a>`
