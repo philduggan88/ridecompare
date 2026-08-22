@@ -1,0 +1,11 @@
+date,time,window,origin,destination,operator,product,quote_sgd,notes
+2026-08-16,01:12,latenight,Pandan Valley,Robinson Road,Grab,Standard/JustGrab,19.50,surging; RC band 16.10-22.20 (stale pre-Jul-10 phone model)
+2026-08-16,01:12,latenight,Pandan Valley,Robinson Road,Gojek,GoCar,19.70,RC band 20.30-28.00 (stale pre-Jul-10 phone model)
+2026-08-16,01:12,latenight,Pandan Valley,Robinson Road,TADA,AnyTADA,17.01,RC band 16.00-22.10 (stale pre-Jul-10 phone model)
+2026-08-16,01:12,latenight,Pandan Valley,Robinson Road,Ryde,RydeX,17.12,RC band 16.50-22.80 (stale pre-Jul-10 phone model)
+2026-08-16,01:12,latenight,Pandan Valley,Robinson Road,Zig,Taxi-or-Car,16.20,RC band 20.00-22.10 (pre-PR#2 surcharged-meter model; evidence for Zig fixed-fare fix)
+2026-08-21,09:51,am_peak,Pandan Valley,Robinson Road,Grab,Standard/JustGrab,21.70,RC est 13.70-17.80; 12.6km/19min; model treated 09:51 Fri as off-peak; Grab Metered Taxi range 17.20-25.20 also shown
+2026-08-21,09:52,am_peak,Pandan Valley,Robinson Road,Gojek,GoCar,21.70,RC est 17.10-24.60; book button showed 21.10 after yuu points promo
+2026-08-21,09:51,am_peak,Pandan Valley,Robinson Road,TADA,AnyTADA,21.42,RC est 15.90-20.70
+2026-08-21,09:51,am_peak,Pandan Valley,Robinson Road,Ryde,RydeX,20.12,RC est 15.20-19.70; RydeFLASH shown at 17.53
+2026-08-21,09:51,am_peak,Pandan Valley,Robinson Road,Zig,Taxi-or-Car,19.50,fixed-fare quote; RC est 17.90-19.80 fixed-fare est; drop-off 10:14-10:20
