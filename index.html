@@ -386,7 +386,7 @@ function fareContext(p, d, now = new Date()) {
   const amPeakTaxi = (weekday && t >= 6 && t < 9.5) || (!weekday && t >= 10 && t < 14);
   const pmPeak = t >= 18;                 // 6pm–11:59pm daily, 25% on the meter
   const lateNight = t < 6;                // midnight–5:59am, 50% on the meter
-  const phvPeak = (weekday && t >= 7 && t < 9.5) || (t >= 17 && t < 20);
+  const phvPeak = (weekday && t >= 7 && t < 10) || (t >= 17 && t < 20);
   const airportPickup = p && (distKm(p, CHANGI) < 2.5 || distKm(p, CHANGI_T4) < 1.2);
   const airportEvening = t >= 17 && (dow === 5 || dow === 6 || dow === 0);
   const taxiAirportEvening = t >= 17;     // CDG airport fee is $8 from 5pm, $6 otherwise
